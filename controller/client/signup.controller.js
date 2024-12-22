@@ -4,6 +4,8 @@ const User = require("../../models/user.model");
 const md5 = require("md5")
 const generate = require("../../helpers/generate");
 const { sendMail } = require("../../helpers/sendMail");
+const verifyGoogleToken = require('../../helpers/verifyGoogleToken');
+const UserGoogle = require("../../models/userGoogleModel");
 const signup = async (req, res) => {
   try {
     const existEmail = await User.findOne({
@@ -11,6 +13,17 @@ const signup = async (req, res) => {
       deleted: false
     })
     if (existEmail) {
+      if (existEmail.googleId) {
+        req.body.password = md5(req.body.password)
+        await User.updateOne({ email: req.body.email }, {
+          password: req.body.password
+        })
+        return res.json({
+          message: "Đăng ký thành công",
+          success: true,
+          error: false
+        })
+      }
       return res.json({
         message: "Email đã tồn tại",
         success: false,
@@ -235,4 +248,82 @@ const resetPassword = async (req, res) => {
     })
   }
 }
-module.exports = { signup, signin, checkUserToken, logout, forgotPassword, otpPassword, resetPassword }
+// login with google
+const loginGoogle = async (req, res) => {
+  try {
+    if (req.body.credential) {
+      const verificationResponse = await verifyGoogleToken(req.body.credential);
+      if (verificationResponse.error) {
+        return res.json({
+          message: verificationResponse.error,
+          success: false,
+          error: true
+        });
+      }
+      const profile = verificationResponse?.payload;
+      console.log(profile);
+
+      // check user đã đăng kí local chưa
+      const isExist = await User.findOne({ email: profile.email });
+      if (isExist) {
+        const cart = await Cart.findOne({
+          user_id: isExist.id
+        })
+        const tokenOption = {
+          httpOnly: true,
+          sameSite: 'Lax',
+        };
+        if (process.env.NODE_ENV === 'production') {
+          tokenOption.sameSite = 'None';
+          tokenOption.secure = true;
+        }
+        res.cookie('cartId', cart._id, {
+          httpOnly: true
+        });
+        res.cookie("tokenUser", isExist.tokenUser, tokenOption).status(200).json({
+          message: "Đăng nhập thành công",
+          data: isExist,
+          success: true,
+          error: false
+        });
+      } else {
+        const newUser = new User({
+          fullName: profile.name,
+          email: profile.email,
+          avatar: profile.picture,
+          googleId: profile.sub,
+        })
+        const saveUser = await newUser.save();
+        const cart = new Cart();
+        await cart.save();
+        cart.user_id = newUser._id;
+        await cart.save();
+        const tokenOption = {
+          httpOnly: true,
+          sameSite: 'Lax',
+        };
+        if (process.env.NODE_ENV === 'production') {
+          tokenOption.sameSite = 'None';
+          tokenOption.secure = true;
+        }
+        res.cookie('cartId', cart._id, {
+          httpOnly: true
+        });
+
+        res.cookie("tokenUser", saveUser.tokenUser, tokenOption).status(200).json({
+          message: "Đăng nhập thành công",
+          data: saveUser,
+          success: true,
+          error: false
+        });
+      }
+    }
+  } catch (error) {
+    res.json({
+      message: error.message,
+      success: false,
+      error: true
+    })
+  }
+}
+module.exports = { signup, signin, checkUserToken, logout, forgotPassword, otpPassword, resetPassword, loginGoogle }

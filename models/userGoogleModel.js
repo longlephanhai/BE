@@ -1,10 +1,9 @@
 const mongoose = require("mongoose")
 const generate = require("../helpers/generate")
-const userSchema = new mongoose.Schema({
+const userGoogleSchema = new mongoose.Schema({
   fullName: String,
   email: String,
   password: String,
-  googleId: String,
   tokenUser: {
     type: String,
     default: generate.generateRandomString(30)
@@ -23,6 +22,6 @@ const userSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
-const User = mongoose.model("user", userSchema);
+const UserGoogle = mongoose.model("usergoogle", userGoogleSchema);
 
-module.exports = User
+module.exports = UserGoogle
